@@ -1,20 +1,38 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <windows.h>
 
-// 根据系统定义宏
 #ifdef _WIN32
+    #include <windows.h>
     #define CLEAR "cls"
-    #define SET_UTF8() system("chcp 65001")
+    // 自动切换 UTF-8 并尝试开启颜色支持
+    #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+    #endif
+    void init_terminal() {
+        system("chcp 65001");
+        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (hOut != INVALID_HANDLE_VALUE) {
+            DWORD dwMode = 0;
+            if (GetConsoleMode(hOut, &dwMode)) {
+                dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+                SetConsoleMode(hOut, dwMode);
+            }
+        }
+    }
 #else
     #define CLEAR "clear"
-    #define SET_UTF8() // Unix/Linux/macOS 默认通常就是 UTF-8，无需特殊命令
+    // Linux/macOS 通常不需要特殊初始化
+    void init_terminal() { 
+        // 留空或执行清理
+    }
 #endif
-
 void generate_mines_and_counts(int data[10][10]);
 void input(int data[10][10], char see[10][10], int *x, int *y, char *choice);
 void print(int data[10][10], char see[10][10]);
 void print_data(int data[10][10]);
+void print_element(int value, char status);
 void expand(int x, int y, int data[10][10], char see[10][10]);
 int processing(int x, int y, char choice, int data[10][10], char see[10][10]);
 int win_or_loss(int data[10][10], char see[10][10]);
@@ -23,6 +41,15 @@ void clear_screen() {
 }
 
 int main() {
+// --- 开启 Windows ANSI 颜色支持的完整补丁 ---
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE) {
+        DWORD dwMode = 0;
+        if (GetConsoleMode(hOut, &dwMode)) {
+            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            SetConsoleMode(hOut, dwMode);
+        }
+    }    
     int data[10][10] = {{0}};
     char see[10][10];
     int i, j;
@@ -139,6 +166,7 @@ void print(int data[10][10], char see[10][10]) {
     for (i = 0; i < 10; i++) {
         printf("%3d |", i + 1);
         for (j = 0; j < 10; j++) {
+            print_element(data[i][j], see[i][j]);
             if (see[i][j] == 'O') {
                 printf("%3d ", data[i][j]);
             }
@@ -169,6 +197,7 @@ void print_data(int data[10][10]) {
     for (i = 0; i < 10; i++) {
         printf("%3d |", i + 1);
         for (j = 0; j < 10; j++) {
+            print_element(data[i][j], 0);
             if (data[i][j] == -1) {
                 printf("%3c ", 'M');
             }
@@ -177,6 +206,29 @@ void print_data(int data[10][10]) {
             }
         }
         printf("\n");
+    }
+}
+
+void print_element(int value, char status) {
+    if (status == 'P') { // 插旗显示黄色
+        printf("\033[33m %2c \033[0m", 'P');
+    } else if (status == '#') { // 未翻开显示灰色或默认
+        printf(" %2c ", '#');
+    } else if (status == 'O') { // 已翻开
+        if (value == -1) { // 地雷：红底白字
+            printf("\033[41;37m  M \033[0m");
+        } else if (value == 0) { // 0不显示数字，显示点或空格更美观
+            printf("  . ");
+        } else {
+            // 根据数字显示不同颜色
+            switch(value) {
+                case 1: printf("\033[34m %2d \033[0m", value); break; // 蓝
+                case 2: printf("\033[32m %2d \033[0m", value); break; // 绿
+                case 3: printf("\033[31m %2d \033[0m", value); break; // 红
+                case 4: printf("\033[35m %2d \033[0m", value); break; // 紫
+                default: printf("\033[36m %2d \033[0m", value); break; // 青
+            }
+        }
     }
 }
 
